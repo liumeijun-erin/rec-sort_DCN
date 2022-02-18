@@ -2,12 +2,14 @@
 
 '''
 model模块中数据流预处理部分:
-读取数据，划分数据集; 定义哈希 + 将所有特征项进行hash(名+值); 转换为tfrecords类型
+* 读取数据，划分数据集-train val(labeled)+test(non-label)
+* 定义哈希 + 将所有特征项进行hash(名+值);
+* 转换为tfrecords类型保存+验证
 '''
 import os
 import pandas as pd
 import tensorflow as tf
-print(tf.__version__)
+import random
 
 def bkdt2hash64(str01):
     mask60 = 0x0fffffffffffffff
@@ -17,50 +19,30 @@ def bkdt2hash64(str01):
         hash = hash * seed + ord(s)
     return hash & mask60
 
-def split_train_test(raw_data_path):
-    feature_names = ['item_id', 'user_id', 'user_session', 'user_type',\
-                    'user_prefer1', 'user_prefer2', 'user_prefer3', 'user_env',\
-                    'label']
-    
-    files_list = []
-    for file in os.listdir(raw_data_path):
-        files_list.append(os.path.join(raw_data_path, file))
-    
-    files_list.sort()
-    train_data_files = files_list[0:-1]
-    test_data_file = files_list[-1]
-
-    train_ds_list = []
-    for file in train_data_files:
-        train_ds_list.append(pd.read_csv(file, header = None, names=feature_names))
-
-    train_ds = pd.concat(train_ds_list, axis=0, ignore_index=True)
-    train_ds = train_ds.astype(str)
-    # print(train_ds.head())
-
-    test_ds_list = []
-    test_ds = pd.read_csv(test_data_file, header = None, names = feature_names)
-    test_ds = test_ds.astype(str)
-    # print(test_ds.head())
-    return train_ds, test_ds
-
-def tohash(data, save_path):
-    wf = open(save_path, 'w')
-    for line in data.values:
-        item_id = bkdt2hash64('item_id='+str(line[0]))
-        user_id = bkdt2hash64('user_id='+str(line[1]))
-        user_session = bkdt2hash64('user_session='+str(line[2]))
-        user_type = bkdt2hash64('user_type='+str(line[3]))
-        user_prefer1 = bkdt2hash64('user_prefer1='+str(line[4]))
-        user_prefer2 = bkdt2hash64('user_prefer2='+str(line[5]))
-        user_prefer3 = bkdt2hash64('user_prefer3='+str(line[6]))
-        user_env = bkdt2hash64('user_env='+str(line[7]))
-        
-        wf.write(str(item_id) + ',' + str(user_id) + ',' \
-            + str(user_session) + ',' + str(user_type) + ',' \
-            + str(user_prefer1) + ',' + str(user_prefer2) + ',' \
-            + str(user_prefer3) + ',' + str(user_env) + ',' + str(line[8]) + '\n')
-    wf.close()     
+def tohash(data,column_names, save_path1, save_path2, split = False):
+    wf1 = open(save_path1, 'w')
+    if split:
+        wf2 = open(save_path2, 'w')
+    print(len(column_names))
+    print(column_names)
+    for line in data.iloc[:,:-1].values:
+        line_hash = ''
+        for i,col in enumerate(column_names):
+            value_hash = bkdt2hash64(column_names[i]+str(line[i]))
+            line_hash += str(value_hash) + ','
+        if split:
+            line_hash += str(line[-1]) 
+        else :
+            line_hash = line_hash.rstrip(',')
+        line_hash += '\n'
+        if split and random.randint(1,10) > 8:
+            wf2.write(line_hash)
+        else:
+            wf1.write(line_hash)
+            
+    wf1.close()    
+    if split:
+        wf2.close()
 
 def get_tfrecords_example(feature, label):
     tfrecords_features = {
@@ -79,9 +61,10 @@ def totfrecords(file, save_dir):
         lines = f.readlines()
         for i, line in enumerate(lines):
             tmp = line.strip().split(',')
-            feature = [int(tmp[0]),int(tmp[1]),int(tmp[2]),int(tmp[3]),\
-                    int(tmp[4]),int(tmp[5]),int(tmp[6]),int(tmp[7])]
-            label = [float(tmp[8])]
+            feature = []
+            for tmp_hash_value in tmp[:-1]:
+                feature.append(int(tmp_hash_value))
+            label = [float(tmp[-1])]
             example = get_tfrecords_example(feature, label)
             writer.write(example.SerializeToString())
             if (i+1) % 20000 == 0:
@@ -90,23 +73,54 @@ def totfrecords(file, save_dir):
                 writer = tf.python_io.TFRecordWriter(save_dir + '/' + 'part-%06d' % file_num + '.tfrecords')
     writer.close()
 
+def test_read_tfrecords(tfrecords_path,feature_len,label_len):
+    tfrecord_path = os.path.join(tfrecords_path, os.listdir(tfrecords_path)[0])
+    features = {
+        "feature": tf.FixedLenFeature(feature_len, tf.int64),
+        "label": tf.FixedLenFeature(label_len, tf.float32),
+    }
+    for serialized_example in tf.python_io.tf_record_iterator(tfrecord_path):
+        example = tf.train.Example().ParseFromString(serialized_example)
+        example = tf.parse_single_example(serialized_example, features)
+        feature = example['feature']
+        label = example['label']
+        with tf.Session():  
+            print(feature.eval())
+            print(label.eval())
+        break
+    
+
 if __name__ == '__main__':
+    train_data_file = 'data/train.csv'
+    test_data_file = 'data/test.csv'
+
+    train_ds = pd.read_csv(train_data_file)
+    test_ds = pd.read_csv(test_data_file)
+    feature_names = test_ds.columns.values[1:]
+
     train_hash_path = 'data/hash_data/train_hash'
+    val_hash_path = 'data/hash_data/val_hash'
     test_hash_path = 'data/hash_data/test_hash'
     if not os.path.exists('data/hash_data'):
-        train_ds, test_ds = split_train_test('data/')
         os.mkdir('data/hash_data')
-        tohash(train_ds, train_hash_path)
-        tohash(test_ds, test_hash_path)
+        tohash(train_ds, feature_names, train_hash_path, val_hash_path, split = True)
+        tohash(test_ds, feature_names, test_hash_path, test_hash_path, split = False)
         print("Hash process finished.")
 
     train_tfrecords_path = 'data/train'
     test_tfrecords_path = 'data/test'
+    val_tfrecords_path = 'data/val'
     if not os.path.exists(train_tfrecords_path):
         os.mkdir(train_tfrecords_path)
         totfrecords(train_hash_path, train_tfrecords_path)
     print("train tfrecords files generated.")
+    if not os.path.exists(val_tfrecords_path):
+        os.mkdir(val_tfrecords_path)
+        totfrecords(val_hash_path, val_tfrecords_path)
+    print("val tfrecords files generated.")
     if not os.path.exists(test_tfrecords_path):
         os.mkdir(test_tfrecords_path)
         totfrecords(test_hash_path, test_tfrecords_path)
     print("test tfrecords files generated.")
+
+    test_read_tfrecords(train_tfrecords_path,len(feature_names),1)
