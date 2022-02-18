@@ -96,7 +96,7 @@ if __name__ == '__main__':
 
     train_ds = pd.read_csv(train_data_file)
     test_ds = pd.read_csv(test_data_file)
-    feature_names = test_ds.columns.values[1:]
+    feature_names = test_ds.columns.values[2:]
 
     train_hash_path = 'data/hash_data/train_hash'
     val_hash_path = 'data/hash_data/val_hash'
@@ -118,9 +118,9 @@ if __name__ == '__main__':
         os.mkdir(val_tfrecords_path)
         totfrecords(val_hash_path, val_tfrecords_path)
     print("val tfrecords files generated.")
-    if not os.path.exists(test_tfrecords_path):
-        os.mkdir(test_tfrecords_path)
-        totfrecords(test_hash_path, test_tfrecords_path)
-    print("test tfrecords files generated.")
+    # if not os.path.exists(test_tfrecords_path):
+    #     os.mkdir(test_tfrecords_path)
+    #     totfrecords(test_hash_path, test_tfrecords_path)
+    # print("test tfrecords files generated.")
 
     test_read_tfrecords(train_tfrecords_path,len(feature_names),1)

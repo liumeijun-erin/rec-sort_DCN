@@ -16,8 +16,20 @@ personal小结：
 
 DeepCrosssing论文--提到归一化作用，在sample size变化时候表
 
-X0与X隐形特征交叉（embedding交叉)，相对于mlp来说减少参数
+X0与X隐形特征交叉（embedding交叉)，相对于FM来说提高交叉程度，相对于mlp来说减少参数
 
+### 2. 实现笔记
 
+Q1:cross结构实现 ：x0 传递；xi，xo迭代计算
 
-​	
+Q2:如何实现层内w，b共享 -- 不能直接用dense + unit；需要tf计算公式实现
+
+### 3. 在线部署与预估
+
+* 方法1：C++ 读取pb+预估：C++ much faster
+
+* 方法2：**docker部署 tf.serving**
+
+  docker建立容器和本地saved_pd间映射；包装好数据进行请求
+
+  

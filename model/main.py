@@ -8,11 +8,13 @@ model模块中模型训练部分：
 from ps_fn import PS 
 from input_fn import InputFn 
 from auc_fn import AUCUtils
-from deepfm import setup_graph, config
+from dcn import setup_graph, config
+# from deepfm import setup_graph, config
 # from fnn import setup_graph, config
 from save_load_model import save_model_to_ckpt, save_model_to_pb, tensorboard_show_graph
 import tensorflow as tf
 import os
+print()
 
 print(tf.__version__)
 local_ps = PS(config['embedding_dim'])
